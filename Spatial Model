@@ -1,0 +1,83 @@
+*************************************************
+* This code is written by Dohyeong Choi "
+*3/26/2023
+*************************************************
+clear all
+set more off
+version 17
+
+* read in datasets and making these dta files
+import excel panel_land.xlsx, sheet(Sheet1) firstrow clear // sheet name, head row, replace in ram option.
+save panel.dta, replace
+
+*importing shp file
+*unzipfile map2, replace	// shp 파일 압축 해제
+*spshape2dta map, replace	// shp file translated to dta file
+
+use map.dta, clear			// data using
+desc						// data description
+list in 1/5					// check the first 5 rows
+destring SIG_CD,replace		// 시군구 코드 to numeric
+spset						// spset을 통해 spatial structure 확인
+
+*시군구 기준 ID 코드 완결성 확인
+bysort SIG_CD: assert _N==1
+assert SIG_CD !=.
+
+spset SIG_CD, modify replace // ID 코드 재설정
+
+
+*Creating Spatial Weight Matrix
+spmatrix create contiguity Wc		// contiguity
+spmatrix create idistance Winv		// inverse distance
+
+*######################################## Panel DataSet ########################################
+
+*import datasets -----------------------------------------------------------------------------------------
+use panel.dta, clear
+
+xtset SIG_CD year
+spbalance 							// balance check
+spset SIG_CD
+
+save sp_panel.dta, replace
+
+*######################################## Panel Analysis: DATA ########################################
+
+use sp_panel.dta, clear
+
+* define macro
+global controls  "ln_grdp_pc ln_com_pop manu_rate ln_pop_dens old_rate rstrct_rate"
+
+global old  "ln_old_r ln_old_t"
+global watt  "ln_watt_r ln_watt_t"
+global rd  "ln_rd_r ln_rd_t"
+global rc  "ln_rc_r ln_rc_t"
+global com  "ln_com_r ln_com_t"
+global utility  "ln_utility"
+
+global summary "ln_lprice ln_grdp_pc ln_com_pop manu_rate ln_pop_dens old_rate rstrct_rate ln_old_r ln_old_t ln_watt_r ln_watt_t ln_utility"
+
+xtsum $summary
+
+*######################################## Panel Analysis: SEM ########################################
+
+*Panel: OLD 도로접근성
+spxtregress ln_lprice $controls ln_old_r, fe err(Winv)
+outreg2  using Result/reg.xls, ctitle(OLD_Road) replace se label dec(3) excel addstat(Pseudo R2, e(r2_p), Log Likelihood, e(ll)) onecol
+
+*Panel: OLD 철도접근성
+spxtregress ln_lprice $controls ln_old_t, fe err(Winv)
+outreg2  using Result/reg.xls, ctitle(OLD_Train) append se label dec(3) excel addstat(Pseudo R2, e(r2_p), Log Likelihood, e(ll)) onecol
+
+*Panel: WATT 도로접근성
+spxtregress ln_lprice $controls ln_watt_r, fe err(Winv)
+outreg2  using Result/reg.xls, ctitle(WATT_Road) append se label dec(3) excel addstat(Pseudo R2, e(r2_p), Log Likelihood, e(ll)) onecol
+
+*Panel: WATT 철도접근성
+spxtregress ln_lprice $controls ln_watt_t, fe err(Winv) 
+outreg2  using Result/reg.xls, ctitle(WATT_Train) append se label dec(3) excel addstat(Pseudo R2, e(r2_p), Log Likelihood, e(ll)) onecol
+
+*Panel: 효용접근성
+spxtregress ln_lprice $controls ln_utility, fe err(Winv) 
+outreg2  using Result/reg.xls, ctitle(Utility) append se label dec(3) excel addstat(Pseudo R2, e(r2_p), Log Likelihood, e(ll)) onecol 
